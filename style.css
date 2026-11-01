@@ -37,7 +37,7 @@ body {
   gap: 16px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--border-color);
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
 @media (min-width: 768px) {
@@ -51,7 +51,6 @@ body {
 .header-title h1 {
   font-size: 1.5rem;
   font-weight: 700;
-  color: var(--text-main);
 }
 
 .header-title p {
@@ -71,7 +70,6 @@ body {
   padding: 8px 16px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .stat-label {
@@ -86,6 +84,47 @@ body {
   color: var(--primary-color);
 }
 
+/* Panel Upload */
+.upload-panel {
+  background: #eff6ff;
+  border: 1px dashed #93c5fd;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.upload-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upload-label strong {
+  color: var(--primary-color);
+  font-size: 0.95rem;
+}
+
+.upload-label span {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: 6px;
+}
+
+.upload-box input[type="file"] {
+  padding: 8px;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.upload-status {
+  font-size: 0.825rem;
+  color: #1e40af;
+  font-weight: 600;
+}
+
 /* Panel Kontrol */
 .control-panel {
   display: grid;
@@ -95,8 +134,7 @@ body {
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 16px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  margin-bottom: 20px;
 }
 
 @media (min-width: 768px) {
@@ -110,7 +148,6 @@ body {
   font-size: 0.8125rem;
   font-weight: 600;
   margin-bottom: 6px;
-  color: var(--text-main);
 }
 
 .control-group select,
@@ -121,9 +158,7 @@ body {
   border-radius: 6px;
   font-size: 0.875rem;
   background-color: var(--card-bg);
-  color: var(--text-main);
   outline: none;
-  transition: border-color 0.2s;
 }
 
 .control-group select:focus,
@@ -131,18 +166,16 @@ body {
   border-color: var(--primary-color);
 }
 
-.control-group input:disabled,
-.control-group select:disabled {
+.control-group input:disabled {
   background-color: #f1f5f9;
   cursor: not-allowed;
 }
 
-/* Tabel Card */
+/* Jadual */
 .table-card {
   background: var(--card-bg);
   border: 1px solid var(--border-color);
   border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
@@ -201,10 +234,9 @@ body {
 .empty-state {
   text-align: center;
   color: var(--text-muted);
-  padding: 48px 16px !important;
+  padding: 40px 16px !important;
 }
 
-/* Footer Tabel */
 .table-footer {
   display: flex;
   justify-content: space-between;
@@ -212,7 +244,6 @@ body {
   background: var(--table-header-bg);
   border-top: 1px solid var(--border-color);
   font-size: 0.875rem;
-  color: var(--text-main);
 }
 
 .hidden {
