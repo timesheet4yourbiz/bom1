@@ -3,9 +3,6 @@ const SUPABASE_URL = "https://tzzvfdoxiculikenvrzl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_qbVpf-BVmrLtdJMAnQT96g_f-x79Lma";
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Konfigurasi Gemini API 
-const GEMINI_API_KEY = "AQ.Ab8RN6J8NK-SUtR7SsozIvKSPuxLUvLSXWz_I32wJAH6uwR4Nw"; 
-
 let currentDrawingItems = [];
 
 // Elemen DOM
@@ -21,6 +18,7 @@ const csvFileInput = document.getElementById("csvFileInput");
 const uploadStatus = document.getElementById("uploadStatus");
 const pdfFileInput = document.getElementById("pdfFileInput");
 const aiStatus = document.getElementById("aiStatus");
+const downloadCsvBtn = document.getElementById("downloadCsvBtn");
 
 // 1. Inisialisasi data awal
 async function initApp() {
@@ -111,7 +109,7 @@ function renderTable(items) {
 
   if (items.length === 0) {
     bomTableBody.innerHTML = `<tr><td colspan="10" class="empty-state">Tiada rekod komponen dijumpai.</td></tr>`;
-    tableFooter.classList.add("hidden");
+    if(tableFooter) tableFooter.classList.add("hidden");
     return;
   }
 
@@ -137,9 +135,9 @@ function renderTable(items) {
     bomTableBody.appendChild(tr);
   });
 
-  itemCount.textContent = items.length;
-  totalWeight.textContent = weightSum.toFixed(1);
-  tableFooter.classList.remove("hidden");
+  if(itemCount) itemCount.textContent = items.length;
+  if(totalWeight) totalWeight.textContent = weightSum.toFixed(1);
+  if(tableFooter) tableFooter.classList.remove("hidden");
 }
 
 function escapeHtml(text) {
@@ -148,7 +146,7 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// 5. Pembaca CSV automatik dengan sekatan fail
+// 5. Pembaca CSV automatik dengan sekatan fail (Kotak Biru)
 if (csvFileInput) {
   csvFileInput.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files);
@@ -157,7 +155,6 @@ if (csvFileInput) {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
 
-      // Sekatan: Tolak jika bukan fail .csv
       if (!file.name.toLowerCase().endsWith(".csv")) {
         uploadStatus.innerHTML = `<span style="color: #dc2626;">❌ Ralat: Fail "${file.name}" bukan CSV! Sila muat naik fail CSV sahaja.</span>`;
         continue;
@@ -171,25 +168,21 @@ if (csvFileInput) {
       const drawingNo = match ? match[1] : cleanName;
       const rev = (match && match[2]) ? match[2] : "A";
 
-      // Baca kandungan fail
       const text = await file.text();
       const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
       if (lines.length <= 1) continue;
 
       const headers = lines[0].split(",").map((h) => h.trim().toUpperCase());
 
-      // Pastikan fail ada format BOM sebenar
       if (!headers.includes("ITEM CODE") && !headers.includes("DESCRIPTION")) {
         uploadStatus.innerHTML = `<span style="color: #dc2626;">❌ Ralat: Format CSV "${file.name}" tidak sah.</span>`;
         continue;
       }
 
-      // Simpan drawing
       await supabaseClient.from("drawings").upsert(
         { drawing_no: drawingNo, revision: rev },
         { onConflict: "drawing_no" }
       );
-
       await supabaseClient.from("bom_items").delete().eq("drawing_no", drawingNo);
 
       const records = [];
@@ -230,7 +223,7 @@ if (csvFileInput) {
   });
 }
 
-// 6. Fungsi Auto-Ekstrak PDF menggunakan Gemini 1.5 Flash
+// 6. Fungsi Auto-Ekstrak PDF menggunakan Gemini 1.5 Flash (Kotak Ungu)
 if (pdfFileInput) {
   pdfFileInput.addEventListener("change", async (e) => {
     const file = e.target.files[0];
@@ -241,16 +234,25 @@ if (pdfFileInput) {
       return;
     }
 
+    // --- SISTEM API KEY LOKAL (Selamat dari GitHub) ---
+    let apiKey = localStorage.getItem("gemini_api_key");
+    if (!apiKey) {
+      apiKey = prompt("Masukkan Kunci API Gemini anda (Bermula dengan AIza... atau AQ...)\nKunci ini hanya disimpan dalam browser anda dan tidak akan disalin ke pelayan awam.");
+      if (!apiKey) {
+        if(aiStatus) aiStatus.innerHTML = `❌ Operasi dibatalkan: API Key diperlukan.`;
+        return;
+      }
+      localStorage.setItem("gemini_api_key", apiKey);
+    }
+
     if(aiStatus) aiStatus.textContent = `⏳ Membaca PDF: ${file.name}... Sila tunggu (Boleh ambil masa 10-20 saat).`;
 
-    // Ambil Drawing No dari nama fail
     const cleanName = file.name.replace(".pdf", "");
     const match = cleanName.match(/(M\d{4}-\d{4}-[A-Z0-9]+?)([A-Z])?$/);
     const drawingNo = match ? match[1] : cleanName;
     const rev = (match && match[2]) ? match[2] : "A";
 
     try {
-      // Tukar PDF kepada Base64
       const base64Data = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.readAsDataURL(file);
@@ -258,8 +260,7 @@ if (pdfFileInput) {
         reader.onerror = error => reject(error);
       });
 
-      // Panggil Gemini API 
-      const prompt = `Anda adalah pengekstrak data BOM. Sila cari jadual 'MATERIAL LIST' atau 'COMPONENT LIST' pada lukisan ini. 
+      const promptText = `Anda adalah pengekstrak data BOM. Sila cari jadual 'MATERIAL LIST' atau 'COMPONENT LIST' pada lukisan ini. 
       Ekstrak semua baris item BOM.
       Hanya pulangkan data dalam format tatasusunan objek JSON (Array of JSON objects). Tiada penerangan teks, cuma mula dan tamat dengan kurungan [ dan ].
       Format setiap objek mesti mengandungi kunci (keys): 
@@ -269,24 +270,26 @@ if (pdfFileInput) {
       const requestBody = {
         contents: [{
           parts: [
-            { text: prompt },
+            { text: promptText },
             { inline_data: { mime_type: "application/pdf", data: base64Data } }
           ]
         }]
       };
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
       });
 
-      if (!response.ok) throw new Error("Gagal menyambung ke Gemini API. Sila periksa API Key.");
+      if (!response.ok) {
+        localStorage.removeItem("gemini_api_key"); // Buang key jika rosak
+        throw new Error("Gagal menyambung ke Gemini API. Kunci (Key) mungkin tidak sah atau telah dibatalkan oleh Google. Sila cipta API Key yang baharu.");
+      }
 
       const result = await response.json();
       let aiText = result.candidates[0].content.parts[0].text;
       
-      // Bersihkan respons untuk dapatkan JSON tulen
       aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
       const records = JSON.parse(aiText);
 
@@ -296,14 +299,12 @@ if (pdfFileInput) {
 
       if(aiStatus) aiStatus.textContent = `✅ AI berjaya membaca ${records.length} item. Sedang menyimpan ke pangkalan data...`;
 
-      // Simpan ke Supabase
       await supabaseClient.from("drawings").upsert(
         { drawing_no: drawingNo, revision: rev },
         { onConflict: "drawing_no" }
       );
       await supabaseClient.from("bom_items").delete().eq("drawing_no", drawingNo);
 
-      // Tambah Drawing No & Rev pada setiap objek
       const finalRecords = records.map(item => ({
         drawing_no: drawingNo,
         cat: item.cat || null,
@@ -322,7 +323,7 @@ if (pdfFileInput) {
       await supabaseClient.from("bom_items").insert(finalRecords);
 
       if(aiStatus) aiStatus.textContent = `🎉 Selesai! Lukisan ${drawingNo} berjaya diekstrak dan disimpan.`;
-      initApp(); // Refresh jadual
+      initApp(); 
 
     } catch (err) {
       console.error(err);
@@ -331,16 +332,7 @@ if (pdfFileInput) {
   });
 }
 
-// Event Listeners
-drawingSelect.addEventListener("change", (e) => fetchBOM(e.target.value));
-searchInput.addEventListener("input", filterAndRender);
-document.addEventListener("DOMContentLoaded", initApp);
-
-
-
 // 7. Fungsi Muat Turun CSV
-const downloadCsvBtn = document.getElementById("downloadCsvBtn");
-
 if (downloadCsvBtn) {
   downloadCsvBtn.addEventListener("click", () => {
     if (!currentDrawingItems || currentDrawingItems.length === 0) {
@@ -354,26 +346,15 @@ if (downloadCsvBtn) {
     let csvContent = headers.join(",") + "\n";
 
     currentDrawingItems.forEach(item => {
-      // Pastikan teks yang ada koma dibalut dengan tanda petik (quotes)
       const cleanText = (text) => `"${(text || "").toString().replace(/"/g, '""')}"`;
-      
       const row = [
-        cleanText(item.cat),
-        item.pos || "",
-        item.qty || "",
-        cleanText(item.item_code),
-        cleanText(item.description),
-        item.length || "",
-        item.width || "",
-        cleanText(item.specification),
-        cleanText(item.material_remark),
-        item.mass_kg || "",
-        cleanText(item.rev)
+        cleanText(item.cat), item.pos || "", item.qty || "", cleanText(item.item_code),
+        cleanText(item.description), item.length || "", item.width || "", cleanText(item.specification),
+        cleanText(item.material_remark), item.mass_kg || "", cleanText(item.rev)
       ];
       csvContent += row.join(",") + "\n";
     });
 
-    // Cipta fail CSV dan mulakan muat turun
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -384,3 +365,8 @@ if (downloadCsvBtn) {
     document.body.removeChild(link);
   });
 }
+
+// Event Listeners
+drawingSelect.addEventListener("change", (e) => fetchBOM(e.target.value));
+searchInput.addEventListener("input", filterAndRender);
+document.addEventListener("DOMContentLoaded", initApp);
