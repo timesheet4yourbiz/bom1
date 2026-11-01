@@ -1,8 +1,10 @@
 // Konfigurasi Supabase
 const SUPABASE_URL = "https://tzzvfdoxiculikenvrzl.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_qbVpf-BVmrLtdJMAnQT96g_f-x79Lma";
-
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Konfigurasi Gemini API 
+const GEMINI_API_KEY = "AQ.Ab8RN6J8NK-SUtR7SsozIvKSPuxLUvLSXWz_I32wJAH6uwR4Nw"; 
 
 let currentDrawingItems = [];
 
@@ -17,6 +19,8 @@ const totalDrawings = document.getElementById("totalDrawings");
 const totalItems = document.getElementById("totalItems");
 const csvFileInput = document.getElementById("csvFileInput");
 const uploadStatus = document.getElementById("uploadStatus");
+const pdfFileInput = document.getElementById("pdfFileInput");
+const aiStatus = document.getElementById("aiStatus");
 
 // 1. Inisialisasi data awal
 async function initApp() {
@@ -223,6 +227,107 @@ if (csvFileInput) {
 
     uploadStatus.textContent = `Selesai! Data CSV berjaya diproses.`;
     initApp();
+  });
+}
+
+// 6. Fungsi Auto-Ekstrak PDF menggunakan Gemini 1.5 Flash
+if (pdfFileInput) {
+  pdfFileInput.addEventListener("change", async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      if(aiStatus) aiStatus.innerHTML = `❌ Sila muat naik fail PDF sahaja.`;
+      return;
+    }
+
+    if(aiStatus) aiStatus.textContent = `⏳ Membaca PDF: ${file.name}... Sila tunggu (Boleh ambil masa 10-20 saat).`;
+
+    // Ambil Drawing No dari nama fail
+    const cleanName = file.name.replace(".pdf", "");
+    const match = cleanName.match(/(M\d{4}-\d{4}-[A-Z0-9]+?)([A-Z])?$/);
+    const drawingNo = match ? match[1] : cleanName;
+    const rev = (match && match[2]) ? match[2] : "A";
+
+    try {
+      // Tukar PDF kepada Base64
+      const base64Data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => resolve(reader.result.split(',')[1]);
+        reader.onerror = error => reject(error);
+      });
+
+      // Panggil Gemini API 
+      const prompt = `Anda adalah pengekstrak data BOM. Sila cari jadual 'MATERIAL LIST' atau 'COMPONENT LIST' pada lukisan ini. 
+      Ekstrak semua baris item BOM.
+      Hanya pulangkan data dalam format tatasusunan objek JSON (Array of JSON objects). Tiada penerangan teks, cuma mula dan tamat dengan kurungan [ dan ].
+      Format setiap objek mesti mengandungi kunci (keys): 
+      "pos", "qty", "item_code", "description", "length", "width", "specification", "material_remark", "mass_kg".
+      Jika nombor, jadikan jenis data nombor. Jika kosong atau tiada, biarkan null.`;
+
+      const requestBody = {
+        contents: [{
+          parts: [
+            { text: prompt },
+            { inline_data: { mime_type: "application/pdf", data: base64Data } }
+          ]
+        }]
+      };
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!response.ok) throw new Error("Gagal menyambung ke Gemini API. Sila periksa API Key.");
+
+      const result = await response.json();
+      let aiText = result.candidates[0].content.parts[0].text;
+      
+      // Bersihkan respons untuk dapatkan JSON tulen
+      aiText = aiText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const records = JSON.parse(aiText);
+
+      if (!records || records.length === 0) {
+        throw new Error("Tiada item BOM dijumpai di dalam PDF ini.");
+      }
+
+      if(aiStatus) aiStatus.textContent = `✅ AI berjaya membaca ${records.length} item. Sedang menyimpan ke pangkalan data...`;
+
+      // Simpan ke Supabase
+      await supabaseClient.from("drawings").upsert(
+        { drawing_no: drawingNo, revision: rev },
+        { onConflict: "drawing_no" }
+      );
+      await supabaseClient.from("bom_items").delete().eq("drawing_no", drawingNo);
+
+      // Tambah Drawing No & Rev pada setiap objek
+      const finalRecords = records.map(item => ({
+        drawing_no: drawingNo,
+        cat: item.cat || null,
+        pos: item.pos || null,
+        qty: item.qty || 1,
+        item_code: item.item_code || null,
+        description: item.description || null,
+        length: item.length || null,
+        width: item.width || null,
+        specification: item.specification || null,
+        material_remark: item.material_remark || null,
+        mass_kg: item.mass_kg || null,
+        rev: rev
+      }));
+
+      await supabaseClient.from("bom_items").insert(finalRecords);
+
+      if(aiStatus) aiStatus.textContent = `🎉 Selesai! Lukisan ${drawingNo} berjaya diekstrak dan disimpan.`;
+      initApp(); // Refresh jadual
+
+    } catch (err) {
+      console.error(err);
+      if(aiStatus) aiStatus.innerHTML = `❌ Ralat AI: ${err.message}`;
+    }
   });
 }
 
