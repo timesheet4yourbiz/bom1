@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sistem BOM Fabrikasi</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Supabase JS Client via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <div class="container">
+    
+    <!-- Bagian Header -->
+    <header class="app-header">
+      <div class="header-title">
+        <h1>Sistem Pangkalan Data BOM</h1>
+        <p>Eksplorasi dan pencarian data Bill of Materials untuk fabrikasi derek/struktur</p>
+      </div>
+      <div class="stats-container">
+        <div class="stat-card">
+          <span class="stat-label">Total Gambar</span>
+          <span id="totalDrawings" class="stat-value">0</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-label">Total Komponen</span>
+          <span id="totalItems" class="stat-value">0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Panel Kontrol & Filter -->
+    <section class="control-panel">
+      <div class="control-group">
+        <label for="drawingSelect">Pilih Nomor Gambar (Drawing No):</label>
+        <select id="drawingSelect">
+          <option value="">-- Memuat daftar gambar... --</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label for="searchInput">Cari Komponen (Item Code / Deskripsi / Spek):</label>
+        <input type="text" id="searchInput" placeholder="Contoh: PL16, EA100, M16, SCREW..." disabled>
+      </div>
+    </section>
+
+    <!-- Tabel Data BOM -->
+    <section class="table-card">
+      <div class="table-responsive">
+        <table class="bom-table">
+          <thead>
+            <tr>
+              <th style="width: 50px;">POS</th>
+              <th style="width: 60px;">QTY</th>
+              <th style="width: 140px;">Item Code</th>
+              <th>Deskripsi Komponen</th>
+              <th class="text-right" style="width: 80px;">Panjang</th>
+              <th class="text-right" style="width: 80px;">Lebar</th>
+              <th>Spesifikasi</th>
+              <th>Keterangan</th>
+              <th class="text-right" style="width: 90px;">Massa (kg)</th>
+              <th class="text-center" style="width: 50px;">Rev</th>
+            </tr>
+          </thead>
+          <tbody id="bomTableBody">
+            <tr>
+              <td colspan="10" class="empty-state">Silakan pilih nomor gambar terlebih dahulu.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Ringkasan Bagian Bawah -->
+      <footer id="tableFooter" class="table-footer hidden">
+        <span>Item Ditampilkan: <strong id="itemCount">0</strong></span>
+        <span>Total Massa: <strong id="totalWeight">0.0</strong> kg</span>
+      </footer>
+    </section>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
