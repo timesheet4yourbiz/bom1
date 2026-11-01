@@ -29,15 +29,27 @@
       </div>
     </header>
 
-    <!-- Panel Muat Naik CSV (Tanpa Python) -->
+    <!-- Panel Muat Naik CSV (KOTAK BIRU) -->
     <section class="upload-panel">
       <div class="upload-box">
         <label for="csvFileInput" class="upload-label">
-          <strong>📁 Muat Naik Fail PDF BOM</strong>
-          <span>(Boleh pilih satu atau pilih banyak fail sekali gus)</span>
+          <strong>📁 Muat Naik Fail CSV BOM</strong>
+          <span>(Boleh pilih satu atau pilih banyak fail .csv sekali gus)</span>
         </label>
         <input type="file" id="csvFileInput" accept=".csv" multiple>
         <p id="uploadStatus" class="upload-status"></p>
+      </div>
+    </section>
+
+    <!-- Panel Muat Naik PDF AI (BAHARU - KOTAK UNGU) -->
+    <section class="upload-panel" style="background: #fdf4ff; border-color: #f0abfc; margin-top: -5px;">
+      <div class="upload-box">
+        <label for="pdfFileInput" class="upload-label">
+          <strong style="color: #c026d3;">🤖 Ekstrak BOM Auto dari PDF Lukisan (Gemini AI)</strong>
+          <span>(Pilih 1 fail .pdf lukisan pada satu masa)</span>
+        </label>
+        <input type="file" id="pdfFileInput" accept=".pdf">
+        <p id="aiStatus" class="upload-status" style="color: #a21caf; font-weight: 600;"></p>
       </div>
     </section>
 
