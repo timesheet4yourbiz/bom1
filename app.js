@@ -1,220 +1,150 @@
-:root {
-  --bg-color: #f8fafc;
-  --card-bg: #ffffff;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --border-color: #e2e8f0;
-  --primary-color: #2563eb;
-  --primary-hover: #1d4ed8;
-  --code-color: #0284c7;
-  --table-header-bg: #f1f5f9;
-  --row-hover: #f8fafc;
-}
+// Konfigurasi Supabase
+const SUPABASE_URL = "https://xtprfzdgesunqnqjzewu.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_t-oxi7XbvM-mKOfOjnaaLQ_uQKJvMum";
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-}
+// Inisialisasi Supabase client
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-body {
-  background-color: var(--bg-color);
-  color: var(--text-main);
-  padding: 24px 16px;
-  line-height: 1.5;
-}
+// Status lokal
+let currentDrawingItems = [];
 
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
+// Elemen DOM
+const drawingSelect = document.getElementById("drawingSelect");
+const searchInput = document.getElementById("searchInput");
+const bomTableBody = document.getElementById("bomTableBody");
+const tableFooter = document.getElementById("tableFooter");
+const itemCount = document.getElementById("itemCount");
+const totalWeight = document.getElementById("totalWeight");
+const totalDrawings = document.getElementById("totalDrawings");
+const totalItems = document.getElementById("totalItems");
 
-/* Header */
-.app-header {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding-bottom: 20px;
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: 24px;
-}
+// 1. Memuat daftar lukisan dan statistik awal
+async function initApp() {
+  try {
+    const { data: drawings, error: drawError } = await supabaseClient
+      .from("drawings")
+      .select("drawing_no, revision")
+      .order("drawing_no", { ascending: true });
 
-@media (min-width: 768px) {
-  .app-header {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+    if (drawError) throw drawError;
+
+    drawingSelect.innerHTML = '<option value="">-- Pilih Nomor Gambar --</option>';
+    drawings.forEach((d) => {
+      const option = document.createElement("option");
+      option.value = d.drawing_no;
+      option.textContent = `${d.drawing_no} (Rev ${d.revision || "A"})`;
+      drawingSelect.appendChild(option);
+    });
+
+    totalDrawings.textContent = drawings.length;
+
+    const { count, error: countError } = await supabaseClient
+      .from("bom_items")
+      .select("*", { count: "exact", head: true });
+
+    if (!countError) {
+      totalItems.textContent = count || 0;
+    }
+  } catch (err) {
+    console.error("Gagal memuat data awal:", err.message);
+    drawingSelect.innerHTML = '<option value="">Gagal menyambung ke Supabase</option>';
   }
 }
 
-.header-title h1 {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--text-main);
-}
+// 2. Mengambil data BOM berdasarkan gambar terpilih
+async function fetchBOM(drawingNo) {
+  if (!drawingNo) {
+    currentDrawingItems = [];
+    searchInput.disabled = true;
+    searchInput.value = "";
+    renderTable([]);
+    return;
+  }
 
-.header-title p {
-  font-size: 0.875rem;
-  color: var(--text-muted);
-}
+  bomTableBody.innerHTML = `<tr><td colspan="10" class="empty-state">Mengambil data BOM untuk ${drawingNo}...</td></tr>`;
 
-.stats-container {
-  display: flex;
-  gap: 12px;
-}
+  try {
+    const { data, error } = await supabaseClient
+      .from("bom_items")
+      .select("*")
+      .eq("drawing_no", drawingNo)
+      .order("pos", { ascending: true });
 
-.stat-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 8px 16px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
+    if (error) throw error;
 
-.stat-label {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-}
-
-.stat-value {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--primary-color);
-}
-
-/* Panel Kontrol */
-.control-panel {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 24px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-@media (min-width: 768px) {
-  .control-panel {
-    grid-template-columns: 1fr 1fr;
+    currentDrawingItems = data || [];
+    searchInput.disabled = false;
+    searchInput.value = "";
+    filterAndRender();
+  } catch (err) {
+    console.error("Gagal memuat BOM:", err.message);
+    bomTableBody.innerHTML = `<tr><td colspan="10" class="empty-state" style="color: #ef4444;">Ralat memuat data: ${err.message}</td></tr>`;
   }
 }
 
-.control-group label {
-  display: block;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  margin-bottom: 6px;
-  color: var(--text-main);
+// 3. Filter teks carian
+function filterAndRender() {
+  const query = searchInput.value.trim().toLowerCase();
+  
+  if (!query) {
+    renderTable(currentDrawingItems);
+    return;
+  }
+
+  const filtered = currentDrawingItems.filter((item) => {
+    const code = (item.item_code || "").toLowerCase();
+    const desc = (item.description || "").toLowerCase();
+    const spec = (item.specification || "").toLowerCase();
+    return code.includes(query) || desc.includes(query) || spec.includes(query);
+  });
+
+  renderTable(filtered);
 }
 
-.control-group select,
-.control-group input {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  background-color: var(--card-bg);
-  color: var(--text-main);
-  outline: none;
-  transition: border-color 0.2s;
+// 4. Papar data ke dalam jadual HTML
+function renderTable(items) {
+  bomTableBody.innerHTML = "";
+
+  if (items.length === 0) {
+    bomTableBody.innerHTML = `<tr><td colspan="10" class="empty-state">Tiada rekod komponen dijumpai.</td></tr>`;
+    tableFooter.classList.add("hidden");
+    return;
+  }
+
+  let weightSum = 0;
+
+  items.forEach((item) => {
+    const mass = item.mass_kg ? Number(item.mass_kg) : 0;
+    weightSum += mass;
+
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td class="font-num">${item.pos ?? "-"}</td>
+      <td class="font-num">${item.qty ?? "-"}</td>
+      <td class="item-code">${escapeHtml(item.item_code ?? "-")}</td>
+      <td><strong>${escapeHtml(item.description ?? "-")}</strong></td>
+      <td class="text-right font-num">${item.length ?? "-"}</td>
+      <td class="text-right font-num">${item.width ?? "-"}</td>
+      <td style="font-size: 0.8125rem; color: #475569;">${escapeHtml(item.specification ?? "-")}</td>
+      <td style="font-size: 0.8125rem; color: #64748b;">${escapeHtml(item.material_remark ?? "-")}</td>
+      <td class="text-right font-num"><strong>${mass > 0 ? mass.toFixed(1) : "-"}</strong></td>
+      <td class="text-center font-num" style="color: #94a3b8;">${escapeHtml(item.rev ?? "")}</td>
+    `;
+    bomTableBody.appendChild(tr);
+  });
+
+  itemCount.textContent = items.length;
+  totalWeight.textContent = weightSum.toFixed(1);
+  tableFooter.classList.remove("hidden");
 }
 
-.control-group select:focus,
-.control-group input:focus {
-  border-color: var(--primary-color);
+function escapeHtml(text) {
+  const div = document.createElement("div");
+  div.textContent = text;
+  return div.innerHTML;
 }
 
-.control-group input:disabled,
-.control-group select:disabled {
-  background-color: #f1f5f9;
-  cursor: not-allowed;
-}
-
-/* Tabel Card */
-.table-card {
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  overflow: hidden;
-}
-
-.table-responsive {
-  overflow-x: auto;
-  width: 100%;
-}
-
-.bom-table {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-  font-size: 0.875rem;
-}
-
-.bom-table th {
-  background-color: var(--table-header-bg);
-  color: var(--text-muted);
-  font-size: 0.6875rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 12px 10px;
-  border-bottom: 1px solid var(--border-color);
-  white-space: nowrap;
-}
-
-.bom-table td {
-  padding: 10px;
-  border-bottom: 1px solid var(--border-color);
-  vertical-align: middle;
-}
-
-.bom-table tbody tr:hover {
-  background-color: var(--row-hover);
-}
-
-.item-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  color: var(--code-color);
-  font-weight: 600;
-}
-
-.font-num {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.text-right {
-  text-align: right;
-}
-
-.text-center {
-  text-align: center;
-}
-
-.empty-state {
-  text-align: center;
-  color: var(--text-muted);
-  padding: 48px 16px !important;
-}
-
-/* Footer Tabel */
-.table-footer {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 16px;
-  background: var(--table-header-bg);
-  border-top: 1px solid var(--border-color);
-  font-size: 0.875rem;
-  color: var(--text-main);
-}
-
-.hidden {
-  display: none !important;
-}
+// Event Listeners
+drawingSelect.addEventListener("change", (e) => fetchBOM(e.target.value));
+searchInput.addEventListener("input", filterAndRender);
+document.addEventListener("DOMContentLoaded", initApp);
