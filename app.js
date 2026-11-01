@@ -2,10 +2,8 @@
 const SUPABASE_URL = "https://xtprfzdgesunqnqjzewu.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_t-oxi7XbvM-mKOfOjnaaLQ_uQKJvMum";
 
-// Inisialisasi Supabase client
 const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Status lokal
 let currentDrawingItems = [];
 
 // Elemen DOM
@@ -17,8 +15,10 @@ const itemCount = document.getElementById("itemCount");
 const totalWeight = document.getElementById("totalWeight");
 const totalDrawings = document.getElementById("totalDrawings");
 const totalItems = document.getElementById("totalItems");
+const csvFileInput = document.getElementById("csvFileInput");
+const uploadStatus = document.getElementById("uploadStatus");
 
-// 1. Memuat daftar lukisan dan statistik awal
+// 1. Inisialisasi data awal
 async function initApp() {
   try {
     const { data: drawings, error: drawError } = await supabaseClient
@@ -28,7 +28,7 @@ async function initApp() {
 
     if (drawError) throw drawError;
 
-    drawingSelect.innerHTML = '<option value="">-- Pilih Nomor Gambar --</option>';
+    drawingSelect.innerHTML = '<option value="">-- Pilih Nombor Lukisan --</option>';
     drawings.forEach((d) => {
       const option = document.createElement("option");
       option.value = d.drawing_no;
@@ -46,12 +46,12 @@ async function initApp() {
       totalItems.textContent = count || 0;
     }
   } catch (err) {
-    console.error("Gagal memuat data awal:", err.message);
-    drawingSelect.innerHTML = '<option value="">Gagal menyambung ke Supabase</option>';
+    console.error("Ralat pangkalan data:", err.message);
+    drawingSelect.innerHTML = '<option value="">Gagal berhubung ke Supabase</option>';
   }
 }
 
-// 2. Mengambil data BOM berdasarkan gambar terpilih
+// 2. Muat turun senarai BOM lukisan yang dipilih
 async function fetchBOM(drawingNo) {
   if (!drawingNo) {
     currentDrawingItems = [];
@@ -61,7 +61,7 @@ async function fetchBOM(drawingNo) {
     return;
   }
 
-  bomTableBody.innerHTML = `<tr><td colspan="10" class="empty-state">Mengambil data BOM untuk ${drawingNo}...</td></tr>`;
+  bomTableBody.innerHTML = `<tr><td colspan="10" class="empty-state">Memuat turun data BOM untuk ${drawingNo}...</td></tr>`;
 
   try {
     const { data, error } = await supabaseClient
@@ -77,12 +77,12 @@ async function fetchBOM(drawingNo) {
     searchInput.value = "";
     filterAndRender();
   } catch (err) {
-    console.error("Gagal memuat BOM:", err.message);
+    console.error("Ralat:", err.message);
     bomTableBody.innerHTML = `<tr><td colspan="10" class="empty-state" style="color: #ef4444;">Ralat memuat data: ${err.message}</td></tr>`;
   }
 }
 
-// 3. Filter teks carian
+// 3. Carian pantas
 function filterAndRender() {
   const query = searchInput.value.trim().toLowerCase();
   
@@ -101,7 +101,7 @@ function filterAndRender() {
   renderTable(filtered);
 }
 
-// 4. Papar data ke dalam jadual HTML
+// 4. Render ke HTML
 function renderTable(items) {
   bomTableBody.innerHTML = "";
 
@@ -142,6 +142,75 @@ function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
+}
+
+// 5. Pembaca CSV automatik (Bila anda pilih fail CSV di browser)
+if (csvFileInput) {
+  csvFileInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      uploadStatus.textContent = `Memuat naik (${i + 1}/${files.length}): ${file.name}...`;
+
+      const cleanName = file.name.replace(".csv", "").replace("_BOM_v2", "").replace("_BOM", "");
+      const match = cleanName.match(/(M\d{4}-\d{4}-[A-Z0-9]+?)([A-Z])?$/);
+      const drawingNo = match ? match[1] : cleanName;
+      const rev = (match && match[2]) ? match[2] : "A";
+
+      // Simpan drawing
+      await supabaseClient.from("drawings").upsert(
+        { drawing_no: drawingNo, revision: rev },
+        { onConflict: "drawing_no" }
+      );
+
+      // Bersihkan item lama jika ada
+      await supabaseClient.from("bom_items").delete().eq("drawing_no", drawingNo);
+
+      // Baca fail CSV baris demi baris
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+      if (lines.length <= 1) continue;
+
+      const headers = lines[0].split(",").map((h) => h.trim().toUpperCase());
+      const records = [];
+
+      for (let j = 1; j < lines.length; j++) {
+        const cols = lines[j].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map((c) => c.replace(/^"|"$/g, "").trim());
+        const row = {};
+        headers.forEach((h, idx) => (row[h] = cols[idx] || null));
+
+        const cleanNum = (val) => {
+          if (!val) return null;
+          const n = parseFloat(val.replace(/[^\d.]/g, ""));
+          return isNaN(n) ? null : n;
+        };
+
+        records.push({
+          drawing_no: drawingNo,
+          cat: row["CAT"] || null,
+          pos: cleanNum(row["POS"]) ? parseInt(cleanNum(row["POS"])) : null,
+          qty: cleanNum(row["QTY"]) ? parseInt(cleanNum(row["QTY"])) : 1,
+          item_code: row["ITEM CODE"] || null,
+          description: row["DESCRIPTION"] || null,
+          length: cleanNum(row["LENGTH"]),
+          width: cleanNum(row["WIDTH"]),
+          specification: row["SPECIFICATION"] || null,
+          material_remark: row["MATERIAL REMARK"] || null,
+          mass_kg: cleanNum(row["MASS (KG)"]),
+          rev: row["REV"] || null,
+        });
+      }
+
+      if (records.length > 0) {
+        await supabaseClient.from("bom_items").insert(records);
+      }
+    }
+
+    uploadStatus.textContent = `Selesai! Berjaya muat naik ${files.length} fail CSV ke Supabase.`;
+    initApp();
+  });
 }
 
 // Event Listeners
