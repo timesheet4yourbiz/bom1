@@ -144,7 +144,7 @@ function escapeHtml(text) {
   return div.innerHTML;
 }
 
-// 5. Pembaca CSV automatik (Bila anda pilih fail CSV di browser)
+// 5. Pembaca CSV automatik dengan sekatan fail
 if (csvFileInput) {
   csvFileInput.addEventListener("change", async (e) => {
     const files = Array.from(e.target.files);
@@ -152,6 +152,14 @@ if (csvFileInput) {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
+
+      // Sekatan: Tolak jika bukan fail .csv
+      if (!file.name.toLowerCase().endsWith(".csv")) {
+        uploadStatus.innerHTML = `<span style="color: #dc2626;">❌ Ralat: Fail "${file.name}" bukan CSV! Sila muat naik fail CSV sahaja.</span>`;
+        continue;
+      }
+
+      uploadStatus.style.color = "#1e40af";
       uploadStatus.textContent = `Memuat naik (${i + 1}/${files.length}): ${file.name}...`;
 
       const cleanName = file.name.replace(".csv", "").replace("_BOM_v2", "").replace("_BOM", "");
@@ -159,23 +167,28 @@ if (csvFileInput) {
       const drawingNo = match ? match[1] : cleanName;
       const rev = (match && match[2]) ? match[2] : "A";
 
+      // Baca kandungan fail
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
+      if (lines.length <= 1) continue;
+
+      const headers = lines[0].split(",").map((h) => h.trim().toUpperCase());
+
+      // Pastikan fail ada format BOM sebenar
+      if (!headers.includes("ITEM CODE") && !headers.includes("DESCRIPTION")) {
+        uploadStatus.innerHTML = `<span style="color: #dc2626;">❌ Ralat: Format CSV "${file.name}" tidak sah.</span>`;
+        continue;
+      }
+
       // Simpan drawing
       await supabaseClient.from("drawings").upsert(
         { drawing_no: drawingNo, revision: rev },
         { onConflict: "drawing_no" }
       );
 
-      // Bersihkan item lama jika ada
       await supabaseClient.from("bom_items").delete().eq("drawing_no", drawingNo);
 
-      // Baca fail CSV baris demi baris
-      const text = await file.text();
-      const lines = text.split(/\r?\n/).filter((l) => l.trim() !== "");
-      if (lines.length <= 1) continue;
-
-      const headers = lines[0].split(",").map((h) => h.trim().toUpperCase());
       const records = [];
-
       for (let j = 1; j < lines.length; j++) {
         const cols = lines[j].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map((c) => c.replace(/^"|"$/g, "").trim());
         const row = {};
@@ -208,7 +221,7 @@ if (csvFileInput) {
       }
     }
 
-    uploadStatus.textContent = `Selesai! Berjaya muat naik ${files.length} fail CSV ke Supabase.`;
+    uploadStatus.textContent = `Selesai! Data CSV berjaya diproses.`;
     initApp();
   });
 }
