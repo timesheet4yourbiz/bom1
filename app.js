@@ -335,3 +335,52 @@ if (pdfFileInput) {
 drawingSelect.addEventListener("change", (e) => fetchBOM(e.target.value));
 searchInput.addEventListener("input", filterAndRender);
 document.addEventListener("DOMContentLoaded", initApp);
+
+
+
+// 7. Fungsi Muat Turun CSV
+const downloadCsvBtn = document.getElementById("downloadCsvBtn");
+
+if (downloadCsvBtn) {
+  downloadCsvBtn.addEventListener("click", () => {
+    if (!currentDrawingItems || currentDrawingItems.length === 0) {
+      alert("Tiada data untuk dimuat turun.");
+      return;
+    }
+
+    const drawingNo = document.getElementById("drawingSelect").value;
+    const headers = ["CAT", "POS", "QTY", "ITEM CODE", "DESCRIPTION", "LENGTH", "WIDTH", "SPECIFICATION", "MATERIAL REMARK", "MASS (KG)", "REV"];
+    
+    let csvContent = headers.join(",") + "\n";
+
+    currentDrawingItems.forEach(item => {
+      // Pastikan teks yang ada koma dibalut dengan tanda petik (quotes)
+      const cleanText = (text) => `"${(text || "").toString().replace(/"/g, '""')}"`;
+      
+      const row = [
+        cleanText(item.cat),
+        item.pos || "",
+        item.qty || "",
+        cleanText(item.item_code),
+        cleanText(item.description),
+        item.length || "",
+        item.width || "",
+        cleanText(item.specification),
+        cleanText(item.material_remark),
+        item.mass_kg || "",
+        cleanText(item.rev)
+      ];
+      csvContent += row.join(",") + "\n";
+    });
+
+    // Cipta fail CSV dan mulakan muat turun
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${drawingNo}_BOM.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  });
+}
